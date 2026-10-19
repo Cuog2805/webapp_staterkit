@@ -22,12 +22,17 @@ public class TokenService(IConfiguration configuration)
 
     public string CreateToken(User user)
     {
-        var claims = new[]
+        var claims = new List<Claim>
         {
-            new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-            new Claim(JwtRegisteredClaimNames.Email, user.Email),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new(ClaimTypes.Role, user.VaiTro),
         };
+
+        if (!string.IsNullOrEmpty(user.SoDienThoai))
+        {
+            claims.Add(new Claim("soDienThoai", user.SoDienThoai));
+        }
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.Key));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

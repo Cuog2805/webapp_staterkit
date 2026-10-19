@@ -1,37 +1,97 @@
 @api_HostAddress = http://localhost:5055
 
-GET {{api_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###
+# =========================================================
+#  VNPT Ninh Bình Solutions — các request thử nghiệm
+#  Tài khoản mẫu: mật khẩu "password123"
+#  KHACH_HANG 0901000001 · DIEU_HANH 0902000002 · KY_THUAT 0903000003 / 0904000004
+# =========================================================
 
 # --- Auth ---
 
-POST {{api_HostAddress}}/auth/register
+POST {{api_HostAddress}}/api/auth/register
 Content-Type: application/json
 
 {
-  "email": "test@example.com",
-  "password": "secret123",
-  "displayName": "Test User"
+  "soDienThoai": "0901234567",
+  "matKhau": "secret123",
+  "hoTen": "Khách thử nghiệm"
 }
 
 ###
 
-POST {{api_HostAddress}}/auth/login
+POST {{api_HostAddress}}/api/auth/login
 Content-Type: application/json
 
 {
-  "email": "test@example.com",
-  "password": "secret123"
+  "soDienThoai": "0901000001",
+  "matKhau": "password123"
 }
 
 ###
 
-# Dán token từ response login/register vào đây:
+# Dán token từ response login vào đây:
 @token = PASTE_TOKEN_HERE
 
-GET {{api_HostAddress}}/auth/me
+GET {{api_HostAddress}}/api/auth/me
+Authorization: Bearer {{token}}
+
+###
+
+# --- Danh mục giải pháp (công khai) ---
+
+GET {{api_HostAddress}}/api/solutions?page=1&size=10&nhom=CLOUD&q=cloud
+
+###
+
+# --- Tạo đơn (KHACH_HANG) — 3 nhóm, giảm 10% theo ví dụ đề ---
+
+POST {{api_HostAddress}}/api/orders
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: demo-key-001
+
+{
+  "dong": [
+    { "giaiPhapId": 5, "soLuong": 1 },
+    { "giaiPhapId": 1, "soLuong": 1 },
+    { "giaiPhapId": 3, "soLuong": 1 }
+  ],
+  "diaChi": "123 Trần Hưng Đạo, Ninh Bình",
+  "ngayHen": "2026-10-22"
+}
+
+###
+
+# --- Danh sách đơn ---
+
+GET {{api_HostAddress}}/api/orders?page=1&size=10
+Authorization: Bearer {{token}}
+
+###
+
+# --- Chi tiết đơn ---
+
+GET {{api_HostAddress}}/api/orders/1
+Authorization: Bearer {{token}}
+
+###
+
+# --- Chuyển trạng thái (DIEU_HANH: tiếp nhận) ---
+
+POST {{api_HostAddress}}/api/orders/1/transitions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "denTrangThai": "DA_TIEP_NHAN",
+  "version": 0
+}
+
+###
+
+# --- Báo cáo tổng hợp (DIEU_HANH) ---
+
+GET {{api_HostAddress}}/api/reports/summary
 Authorization: Bearer {{token}}
 
 ###

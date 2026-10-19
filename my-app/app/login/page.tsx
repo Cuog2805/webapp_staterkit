@@ -4,12 +4,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { login } from "@/lib/api";
-import { setToken } from "@/lib/auth";
+import { saveSession } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [soDienThoai, setSoDienThoai] = useState("");
+  const [matKhau, setMatKhau] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -18,9 +18,10 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const res = await login({ email, password });
-      setToken(res.token);
-      router.push("/");
+      const res = await login({ soDienThoai, matKhau });
+      saveSession(res.token, res.user);
+      router.push("/orders");
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Đăng nhập thất bại.");
     } finally {
@@ -43,29 +44,29 @@ export default function LoginPage() {
         )}
 
         <div className="space-y-1">
-          <label htmlFor="email" className="text-sm font-medium">
-            Email
+          <label htmlFor="soDienThoai" className="text-sm font-medium">
+            Số điện thoại
           </label>
           <input
-            id="email"
-            type="email"
+            id="soDienThoai"
+            type="text"
             required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            value={soDienThoai}
+            onChange={(e) => setSoDienThoai(e.target.value)}
             className="w-full rounded-md border border-black/15 bg-transparent px-3 py-2 outline-none focus:border-foreground dark:border-white/20"
           />
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="password" className="text-sm font-medium">
+          <label htmlFor="matKhau" className="text-sm font-medium">
             Mật khẩu
           </label>
           <input
-            id="password"
+            id="matKhau"
             type="password"
             required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            value={matKhau}
+            onChange={(e) => setMatKhau(e.target.value)}
             className="w-full rounded-md border border-black/15 bg-transparent px-3 py-2 outline-none focus:border-foreground dark:border-white/20"
           />
         </div>

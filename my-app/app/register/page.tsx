@@ -4,13 +4,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { register } from "@/lib/api";
-import { setToken } from "@/lib/auth";
+import { saveSession } from "@/lib/auth";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [displayName, setDisplayName] = useState("");
+  const [soDienThoai, setSoDienThoai] = useState("");
+  const [hoTen, setHoTen] = useState("");
+  const [matKhau, setMatKhau] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -19,13 +19,10 @@ export default function RegisterPage() {
     setError(null);
     setLoading(true);
     try {
-      const res = await register({
-        email,
-        password,
-        displayName: displayName || undefined,
-      });
-      setToken(res.token);
-      router.push("/");
+      const res = await register({ soDienThoai, matKhau, hoTen });
+      saveSession(res.token, res.user);
+      router.push("/orders");
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Đăng ký thất bại.");
     } finally {
@@ -40,6 +37,9 @@ export default function RegisterPage() {
         className="w-full max-w-sm space-y-4 rounded-xl border border-black/10 p-6 shadow-sm dark:border-white/15"
       >
         <h1 className="text-2xl font-semibold">Đăng ký</h1>
+        <p className="text-sm text-black/60 dark:text-white/60">
+          Tài khoản đăng ký mới là <strong>Khách hàng</strong>.
+        </p>
 
         {error && (
           <p className="rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">
@@ -48,48 +48,47 @@ export default function RegisterPage() {
         )}
 
         <div className="space-y-1">
-          <label htmlFor="displayName" className="text-sm font-medium">
-            Tên hiển thị
+          <label htmlFor="hoTen" className="text-sm font-medium">
+            Họ và tên
           </label>
           <input
-            id="displayName"
+            id="hoTen"
             type="text"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
+            required
+            value={hoTen}
+            onChange={(e) => setHoTen(e.target.value)}
             className="w-full rounded-md border border-black/15 bg-transparent px-3 py-2 outline-none focus:border-foreground dark:border-white/20"
           />
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="email" className="text-sm font-medium">
-            Email
+          <label htmlFor="soDienThoai" className="text-sm font-medium">
+            Số điện thoại
           </label>
           <input
-            id="email"
-            type="email"
+            id="soDienThoai"
+            type="text"
             required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            value={soDienThoai}
+            onChange={(e) => setSoDienThoai(e.target.value)}
             className="w-full rounded-md border border-black/15 bg-transparent px-3 py-2 outline-none focus:border-foreground dark:border-white/20"
           />
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="password" className="text-sm font-medium">
+          <label htmlFor="matKhau" className="text-sm font-medium">
             Mật khẩu
           </label>
           <input
-            id="password"
+            id="matKhau"
             type="password"
             required
             minLength={6}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            value={matKhau}
+            onChange={(e) => setMatKhau(e.target.value)}
             className="w-full rounded-md border border-black/15 bg-transparent px-3 py-2 outline-none focus:border-foreground dark:border-white/20"
           />
-          <p className="text-xs text-black/50 dark:text-white/50">
-            Tối thiểu 6 ký tự.
-          </p>
+          <p className="text-xs text-black/50 dark:text-white/50">Tối thiểu 6 ký tự.</p>
         </div>
 
         <button

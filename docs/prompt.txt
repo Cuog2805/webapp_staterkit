@@ -1,0 +1,15 @@
+Đọc đề mới ở docs/documents/<ten-de-moi>.docx và giải trên nhánh hiện tại (de-02).
+Tham khảo docs/de-thi-khac-playbook.md làm khung thực hiện (tái dùng hạ tầng:
+auth/JWT+role, middleware lỗi {error:{code,message}}, Strategy ưu đãi, State machine,
+lib/api, Nav, phân trang). auth-login-plan.md + vnpt-solutions-plan.md là tham khảo nội bộ.
+
+Yêu cầu:
+- Lên kế hoạch trước (plan mode), hỏi tôi chốt phạm vi A / A+B nếu cần.
+- Giữ ĐÚNG path API và tên trường JSON theo đặc tả đề mới (không bê nguyên của đề VNPT).
+- Thay phần nghiệp vụ: Models/Enums.cs, OrderStateMachine.Rules, Services/Discounts,
+  định dạng mã, DTOs, migration Flyway mới (append-only) + seed, nhãn my-app/lib/labels.ts.
+- Tôn trọng gotcha Next.js 16 (server wrapper await params + Suspense, không new Date()/
+  crypto lúc render, không setState đồng bộ trong effect).
+- Verify end-to-end: docker compose down -v && up -d → dotnet run → dotnet test →
+  npm run lint && build; test 401/403/404/409/422, ưu đãi, mã đơn, idempotency, version.
+- Lưu plan vào docs/ như thường lệ.
