@@ -7,10 +7,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is a multi-part web app starter kit with three top-level directories:
 
 - `my-app/` — Next.js 16 frontend (React 19, TypeScript, Tailwind CSS v4). This is the only part currently under git version control (its own `.git`).
-- `api/` — ASP.NET Core Web API targeting **.NET 10** (`api/api/`, solution file `api/api.slnx`). Scaffolded from the default template (WeatherForecast controller + OpenAPI).
-- `db/` — placeholder, currently empty.
+- `api/` — ASP.NET Core Web API targeting **.NET 10** (`api/api/`, solution file `api/api.slnx`). Uses EF Core (Pomelo MySQL provider) and JWT bearer auth.
+- `db/` — MySQL 8.4 via Docker Compose, schema managed by **Flyway** (plain-SQL migrations in `db/migrations/`). See `db/README.md` for full usage.
 
-The frontend and backend are independent projects with no wired-up integration yet; each runs on its own.
+The three parts run independently. Auth (register/login) is wired end-to-end: frontend (`my-app`) → API (`api`) via JWT → MySQL (`db`).
 
 ## Frontend (`my-app/`)
 
@@ -45,3 +45,50 @@ dotnet build                  # build
 
 - Controller-based Web API (`Controllers/`), OpenAPI document mapped at `/openapi` in Development only (`Program.cs`).
 - Nullable reference types and implicit usings are enabled (`api.csproj`).
+- Data access is EF Core with the Pomelo MySQL provider. `Data/AppDbContext.cs` only declares `DbSet<>` properties. Connection string (`ConnectionStrings:Default`) and JWT settings live in `appsettings.Development.json`; `appsettings.json` keeps placeholders.
+
+### Model / entity conventions (follow this pattern for new models)
+
+The project is **database-first**: Flyway migrations in `db/migrations/` are the source of truth for the schema. EF Core entities only map onto existing tables. When adding a new model, create both (1) a Flyway migration that creates/alters the table and (2) the matching entity.
+
+Map entities with **data annotations**, not Fluent API / `OnModelCreating`. Follow the shape of `Models/User.cs`:
+
+```csharp
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.EntityFrameworkCore;   // needed for [Index]
+
+[Table("things")]                      // snake_case table name
+[Index(nameof(Code), IsUnique = true)] // indexes are class-level attributes
+public class Thing
+{
+    [Key]
+    [Column("id")]
+    public long Id { get; set; }
+
+    [Required]
+    [MaxLength(255)]
+    [Column("code")]                   // every property gets an explicit snake_case [Column]
+    public string Code { get; set; } = string.Empty;
+}
+```
+
+Rules:
+- Table names and columns are **snake_case** (`[Table("...")]`, `[Column("...")]` on every property).
+- `[Index]` (unique or not) is a **class-level** attribute from `Microsoft.EntityFrameworkCore`, not a property attribute.
+- Use `[Key]`, `[Required]`, `[MaxLength(n)]` to mirror the migration's column definition — keep them in sync with the SQL.
+- Then add the `DbSet<Thing>` to `AppDbContext`; do **not** add `OnModelCreating` configuration.
+
+Request/response DTOs are positional `record`s with validation attributes on the **constructor parameters** (`[Required]`, not `[property: Required]` — the latter throws at runtime for records). See `Dtos/AuthDtos.cs`.
+
+## Database (`db/`)
+
+MySQL 8.4 + Flyway, run from `db/`. Requires Docker. Full details in `db/README.md`.
+
+```bash
+cp .env.example .env     # first time only, then edit values
+docker compose up -d     # start MySQL and apply Flyway migrations
+```
+
+- Schema changes are plain-SQL files in `db/migrations/`, named `V<n>__<desc>.sql` (versioned, run once) or `R__<desc>.sql` (repeatable). Never edit an applied versioned migration — add a new one.
+- `docker compose down -v` wipes the volume and re-runs all migrations from V1.

@@ -4,3 +4,34 @@ GET {{api_HostAddress}}/weatherforecast/
 Accept: application/json
 
 ###
+
+# --- Auth ---
+
+POST {{api_HostAddress}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "secret123",
+  "displayName": "Test User"
+}
+
+###
+
+POST {{api_HostAddress}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "secret123"
+}
+
+###
+
+# Dán token từ response login/register vào đây:
+@token = PASTE_TOKEN_HERE
+
+GET {{api_HostAddress}}/auth/me
+Authorization: Bearer {{token}}
+
+###
