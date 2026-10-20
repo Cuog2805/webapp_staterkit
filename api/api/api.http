@@ -28,10 +28,18 @@ Content-Type: application/json
 
 ###
 
-# Dán token từ response login/register vào đây:
+# Sau login/register, JWT được đặt trong HttpOnly cookie "auth_token"
+# (xem header Set-Cookie của response), không còn trong body.
+# Nếu client giữ cookie thì /auth/me chạy luôn không cần header.
+# Cách test thay thế: dán token đọc từ cookie vào đây và dùng Bearer
+# (middleware vẫn chấp nhận header Authorization).
 @token = PASTE_TOKEN_HERE
 
 GET {{api_HostAddress}}/auth/me
 Authorization: Bearer {{token}}
+
+###
+
+POST {{api_HostAddress}}/auth/logout
 
 ###

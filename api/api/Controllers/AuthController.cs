@@ -12,10 +12,10 @@ namespace api.Controllers;
 
 [ApiController]
 [Route("auth")]
-public class AuthController(AppDbContext db, TokenService tokenService) : ControllerBase
+public class AuthController(AppDbContext db, TokenService tokenService, IWebHostEnvironment env) : ControllerBase
 {
     [HttpPost("register")]
-    public async Task<ActionResult<AuthResponse>> Register(RegisterRequest request)
+    public async Task<ActionResult<UserDto>> Register(RegisterRequest request)
     {
         var email = request.Email.Trim().ToLowerInvariant();
 
@@ -34,11 +34,12 @@ public class AuthController(AppDbContext db, TokenService tokenService) : Contro
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        return Ok(BuildResponse(user));
+        SetAuthCookie(tokenService.CreateToken(user));
+        return Ok(new UserDto(user.Id, user.Email, user.DisplayName));
     }
 
     [HttpPost("login")]
-    public async Task<ActionResult<AuthResponse>> Login(LoginRequest request)
+    public async Task<ActionResult<UserDto>> Login(LoginRequest request)
     {
         var email = request.Email.Trim().ToLowerInvariant();
         var user = await db.Users.FirstOrDefaultAsync(u => u.Email == email);
@@ -48,7 +49,8 @@ public class AuthController(AppDbContext db, TokenService tokenService) : Contro
             return Unauthorized(new { message = "Email hoặc mật khẩu không đúng." });
         }
 
-        return Ok(BuildResponse(user));
+        SetAuthCookie(tokenService.CreateToken(user));
+        return Ok(new UserDto(user.Id, user.Email, user.DisplayName));
     }
 
     [Authorize]
@@ -72,6 +74,26 @@ public class AuthController(AppDbContext db, TokenService tokenService) : Contro
         return Ok(new UserDto(user.Id, user.Email, user.DisplayName));
     }
 
-    private AuthResponse BuildResponse(User user) =>
-        new(tokenService.CreateToken(user), new UserDto(user.Id, user.Email, user.DisplayName));
+    [HttpPost("logout")]
+    public IActionResult Logout()
+    {
+        Response.Cookies.Delete("auth_token", new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = !env.IsDevelopment(),
+            SameSite = SameSiteMode.Lax,
+            Path = "/",
+        });
+        return NoContent();
+    }
+
+    private void SetAuthCookie(string token) =>
+        Response.Cookies.Append("auth_token", token, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = !env.IsDevelopment(),   // false ở dev (http), true ở prod
+            SameSite = SameSiteMode.Lax,
+            Path = "/",
+            Expires = DateTimeOffset.UtcNow.AddMinutes(tokenService.ExpireMinutes),
+        });
 }

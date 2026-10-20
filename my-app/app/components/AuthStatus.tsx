@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { me, type UserDto } from "@/lib/api";
-import { clearToken, getToken } from "@/lib/auth";
+import { logout, me, type UserDto } from "@/lib/api";
 
 export default function AuthStatus() {
   const [user, setUser] = useState<UserDto | null>(null);
@@ -12,15 +11,13 @@ export default function AuthStatus() {
   useEffect(() => {
     let active = true;
     async function loadUser() {
-      if (!getToken()) {
-        if (active) setLoading(false);
-        return;
-      }
       try {
+        // Cookie HttpOnly không đọc được từ JS — gọi thẳng /auth/me,
+        // 401/lỗi nghĩa là chưa đăng nhập.
         const u = await me();
         if (active) setUser(u);
       } catch {
-        clearToken();
+        if (active) setUser(null);
       } finally {
         if (active) setLoading(false);
       }
@@ -31,9 +28,12 @@ export default function AuthStatus() {
     };
   }, []);
 
-  function handleLogout() {
-    clearToken();
-    setUser(null);
+  async function handleLogout() {
+    try {
+      await logout();
+    } finally {
+      setUser(null);
+    }
   }
 
   if (loading) return null;

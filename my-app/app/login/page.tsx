@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { login } from "@/lib/api";
-import { setToken } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,8 +17,7 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const res = await login({ email, password });
-      setToken(res.token);
+      await login({ email, password });
       router.push("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Đăng nhập thất bại.");

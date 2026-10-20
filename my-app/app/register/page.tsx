@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { register } from "@/lib/api";
-import { setToken } from "@/lib/auth";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -19,12 +18,11 @@ export default function RegisterPage() {
     setError(null);
     setLoading(true);
     try {
-      const res = await register({
+      await register({
         email,
         password,
         displayName: displayName || undefined,
       });
-      setToken(res.token);
       router.push("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Đăng ký thất bại.");

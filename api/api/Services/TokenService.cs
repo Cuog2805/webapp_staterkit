@@ -20,6 +20,8 @@ public class TokenService(IConfiguration configuration)
         configuration.GetSection("Jwt").Get<JwtOptions>()
         ?? throw new InvalidOperationException("Jwt configuration section is missing.");
 
+    public int ExpireMinutes => _options.ExpireMinutes;
+
     public string CreateToken(User user)
     {
         var claims = new[]

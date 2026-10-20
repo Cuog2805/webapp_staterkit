@@ -40,6 +40,18 @@ builder.Services
             ValidAudience = jwt.Audience,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Key)),
         };
+
+        // JWT nằm trong HttpOnly cookie; middleware mặc định chỉ đọc header
+        // Authorization nên ta lấy token từ cookie "auth_token" tại đây.
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                if (context.Request.Cookies.TryGetValue("auth_token", out var token))
+                    context.Token = token;
+                return Task.CompletedTask;
+            }
+        };
     });
 
 builder.Services.AddAuthorization();
@@ -49,7 +61,8 @@ builder.Services.AddCors(options =>
     options.AddPolicy(CorsPolicy, policy =>
         policy.WithOrigins("http://localhost:3000")
               .AllowAnyHeader()
-              .AllowAnyMethod()));
+              .AllowAnyMethod()
+              .AllowCredentials()));
 
 var app = builder.Build();
 

@@ -1,5 +1,6 @@
 // Client gọi API backend (ASP.NET) cho chức năng auth.
-import { getToken } from "./auth";
+// JWT được lưu trong HttpOnly cookie do backend đặt; mọi request dùng
+// credentials: "include" để trình duyệt tự gửi/nhận cookie đó.
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5055";
 
@@ -7,11 +8,6 @@ export interface UserDto {
   id: number;
   email: string;
   displayName: string | null;
-}
-
-export interface AuthResponse {
-  token: string;
-  user: UserDto;
 }
 
 export interface RegisterInput {
@@ -28,12 +24,11 @@ export interface LoginInput {
 class ApiError extends Error {}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getToken();
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...init?.headers,
     },
   });
@@ -49,18 +44,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(message);
   }
 
+  // 204 No Content (vd: logout) — không có body để parse.
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
-export function register(input: RegisterInput): Promise<AuthResponse> {
-  return request<AuthResponse>("/auth/register", {
+export function register(input: RegisterInput): Promise<UserDto> {
+  return request<UserDto>("/auth/register", {
     method: "POST",
     body: JSON.stringify(input),
   });
 }
 
-export function login(input: LoginInput): Promise<AuthResponse> {
-  return request<AuthResponse>("/auth/login", {
+export function login(input: LoginInput): Promise<UserDto> {
+  return request<UserDto>("/auth/login", {
     method: "POST",
     body: JSON.stringify(input),
   });
@@ -68,4 +65,8 @@ export function login(input: LoginInput): Promise<AuthResponse> {
 
 export function me(): Promise<UserDto> {
   return request<UserDto>("/auth/me");
+}
+
+export function logout(): Promise<void> {
+  return request<void>("/auth/logout", { method: "POST" });
 }

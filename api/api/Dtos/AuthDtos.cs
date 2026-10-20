@@ -12,5 +12,3 @@ public record LoginRequest(
     [Required] string Password);
 
 public record UserDto(long Id, string Email, string? DisplayName);
-
-public record AuthResponse(string Token, UserDto User);
