@@ -1,0 +1,8 @@
+**/bin/
+**/obj/
+**/.vs/
+**/*.user
+api.Tests/
+# Không đóng gói config dev (có secret dev) vào image production.
+**/appsettings.Development.json
+**/Properties/launchSettings.json
