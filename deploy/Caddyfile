@@ -1,0 +1,41 @@
+# Caddy: reverse proxy + tự xin/gia hạn chứng chỉ TLS (Let's Encrypt) cho {$DOMAIN}.
+# Với DOMAIN=localhost, Caddy tự cấp cert nội bộ (trình duyệt sẽ cảnh báo — bình thường).
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# Giới hạn kích thước body — chặn request khổng lồ ngay ở cửa, trước khi tới app.
+	request_body {
+		max_size 10MB
+	}
+
+	# Frontend và API cùng một domain ⇒ trình duyệt không cần CORS.
+	# Controller đều có prefix /api/... nên chuyển nguyên path, không cần strip.
+	handle /api/* {
+		reverse_proxy api:8080
+	}
+
+	# /health của API cố ý không được định tuyến ra ngoài (chỉ Docker healthcheck dùng).
+	handle {
+		reverse_proxy web:3000 {
+			# Đẩy từng chunk ngay lập tức để streaming/Partial Prerendering của Next.js hoạt động.
+			flush_interval -1
+		}
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

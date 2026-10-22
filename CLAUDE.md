@@ -10,7 +10,7 @@ This is a multi-part web app starter kit with three top-level directories:
 - `api/` — ASP.NET Core Web API targeting **.NET 10** (`api/api/`, solution file `api/api.slnx`). Uses EF Core (Pomelo MySQL provider) and JWT bearer auth.
 - `db/` — MySQL 8.4 via Docker Compose, schema managed by **Flyway** (plain-SQL migrations in `db/migrations/`). See `db/README.md` for full usage.
 
-The three parts run independently. Auth (register/login) is wired end-to-end: frontend (`my-app`) → API (`api`) via JWT → MySQL (`db`).
+The three parts run independently in dev; `deploy/` runs them together for production. Auth (register/login) is wired end-to-end: frontend (`my-app`) → API (`api`) via JWT → MySQL (`db`).
 
 ## Frontend (`my-app/`)
 
@@ -92,3 +92,18 @@ docker compose up -d     # start MySQL and apply Flyway migrations
 
 - Schema changes are plain-SQL files in `db/migrations/`, named `V<n>__<desc>.sql` (versioned, run once) or `R__<desc>.sql` (repeatable). Never edit an applied versioned migration — add a new one.
 - `docker compose down -v` wipes the volume and re-runs all migrations from V1.
+- `db/migrations/` runs in dev **and** production; `db/seed/` (sample data, test accounts) runs in dev only. Flyway versions are shared across both folders — don't reuse a number.
+
+## Deployment (`deploy/`)
+
+Production is one VM running Docker Compose: Caddy (TLS, reverse proxy) → `web` (Next.js standalone) and `api` (ASP.NET), plus `mysql` and a one-shot `migrate` image (Flyway + `db/migrations/`). Full guide and rationale: `docs/deploy.md`.
+
+```bash
+cd deploy
+cp .env.example .env    # set DOMAIN=localhost, IMAGE_PREFIX=webapp, TAG=local, secrets
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build --wait   # rehearse prod locally
+```
+
+- Frontend and API share one domain: Caddy routes `/api/*` to the API, so every controller route must start with `api/`. The frontend image is built with an empty `NEXT_PUBLIC_API_URL` (relative URLs).
+- API config in production comes from env vars (`ConnectionStrings__Default`, `Jwt__Key`, …). CORS origins come from `Cors:AllowedOrigins` (dev only; empty in prod). TLS ends at Caddy — don't re-add `UseHttpsRedirection`.
+- CI: `.github/workflows/ci.yml` (lint, test, image build). Release: push a `v*` tag → `.github/workflows/deploy.yml` builds, pushes to GHCR and runs `deploy/scripts/deploy.sh <tag>` on the server over SSH.

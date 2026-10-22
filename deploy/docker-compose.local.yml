@@ -1,0 +1,15 @@
+# Override để build image từ mã nguồn và chạy thử toàn bộ stack production trên máy mình,
+# trước khi đụng tới server thật:
+#
+#   cd deploy
+#   cp .env.example .env        # sửa DOMAIN=localhost
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+#
+# Trên server KHÔNG dùng file này — server chỉ kéo image từ registry.
+services:
+  web:
+    build: ../my-app
+  api:
+    build: ../api
+  migrate:
+    build: ../db

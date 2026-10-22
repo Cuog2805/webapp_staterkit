@@ -1,0 +1,122 @@
+# Stack production. File này (cùng Caddyfile, mysql-init/, scripts/) được copy lên server;
+# server KHÔNG cần mã nguồn — nó chỉ kéo image đã build sẵn từ registry.
+# Biến ${...} đọc từ file .env cạnh file này (mẫu: .env.example).
+#
+# Luồng khởi động:  mysql (healthy) → migrate (chạy xong, exit 0) → api (healthy) → caddy
+#                   web (healthy) ─────────────────────────────────────────────────┘
+
+name: webapp
+
+x-logging: &default-logging
+  # Mặc định Docker ghi log không giới hạn → sớm muộn đầy ổ đĩa. Xoay vòng 5 × 10MB.
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN is required}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is required}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data # chứng chỉ TLS — mất volume này là phải xin lại cert (có rate limit)
+      - caddy-config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    networks: [edge]
+    logging: *default-logging
+
+  web:
+    image: ${IMAGE_PREFIX:-webapp}/web:${TAG:-local}
+    restart: unless-stopped
+    networks: [edge]
+    logging: *default-logging
+
+  api:
+    image: ${IMAGE_PREFIX:-webapp}/api:${TAG:-local}
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      # "__" là cách ASP.NET map biến môi trường vào section config: Jwt__Key ⇒ Jwt:Key.
+      # API đăng nhập DB bằng user chỉ có quyền đọc/ghi dữ liệu (APP_DB_USER), không phải user migrate.
+      ConnectionStrings__Default: "Server=mysql;Port=3306;Database=${MYSQL_DATABASE};User=${APP_DB_USER};Password=${APP_DB_PASSWORD:?APP_DB_PASSWORD is required};"
+      Jwt__Key: ${JWT_KEY:?JWT_KEY is required}
+      Jwt__Issuer: ${JWT_ISSUER:-webapp-starterkit}
+      Jwt__Audience: ${JWT_AUDIENCE:-webapp-starterkit}
+      # EF Core log từng câu SQL ở mức Information — hữu ích khi dev, nhưng ở prod chỉ làm
+      # phình log và có thể lộ dữ liệu. Chỉ giữ cảnh báo/lỗi.
+      Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command: Warning
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [edge, backend]
+    logging: *default-logging
+
+  migrate:
+    image: ${IMAGE_PREFIX:-webapp}/migrate:${TAG:-local}
+    restart: "no" # chạy một lần mỗi lần deploy rồi thoát
+    environment:
+      # Truyền qua biến môi trường thay vì tham số dòng lệnh để mật khẩu không hiện trong `ps`.
+      FLYWAY_URL: "jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?allowPublicKeyRetrieval=true&useSSL=false"
+      FLYWAY_USER: ${MYSQL_USER}
+      FLYWAY_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+      FLYWAY_CONNECT_RETRIES: "10"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks: [backend]
+    logging: *default-logging
+
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    # Cố ý KHÔNG có `ports:` — DB không bao giờ lộ ra Internet. Cần truy cập thì dùng
+    # `docker compose exec mysql mysql ...` hoặc SSH tunnel.
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      # User này sở hữu schema, dùng cho migrate (CREATE/ALTER).
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      # Đọc bởi mysql-init/01-app-user.sh để tạo user chạy app (chỉ quyền DML).
+      APP_DB_USER: ${APP_DB_USER}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # Script trong thư mục này chỉ chạy MỘT LẦN, khi volume dữ liệu còn trống.
+      - ./mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # Ping qua TCP: trong pha init MySQL chạy tạm với --skip-networking, nên check này
+      # chỉ pass khi server thật đã sẵn sàng. `ping` không cần mật khẩu.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks: [backend]
+    logging: *default-logging
+
+networks:
+  # edge: caddy ↔ web/api.
+  edge: {}
+  # backend: api/migrate ↔ mysql. `internal` ⇒ không có đường ra Internet; caddy và web
+  # không thuộc mạng này nên dù bị chiếm quyền cũng không chạm được tới DB.
+  backend:
+    internal: true
+
+volumes:
+  mysql-data:
+  caddy-data:
+  caddy-config:

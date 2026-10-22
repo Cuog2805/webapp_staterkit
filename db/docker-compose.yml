@@ -18,8 +18,9 @@ services:
       timeout: 5s
       retries: 5
 
-  # Chạy migration SQL (db/migrations) khi khởi động. Flyway tự tạo bảng
-  # flyway_schema_history để theo dõi migration nào đã áp dụng.
+  # Chạy migration SQL (db/migrations) + dữ liệu mẫu (db/seed) khi khởi động. Flyway tự
+  # tạo bảng flyway_schema_history để theo dõi migration nào đã áp dụng.
+  # seed/ chỉ dùng cho dev; production (deploy/) chỉ chạy migrations/.
   flyway:
     image: flyway/flyway:11
     container_name: webapp-flyway
@@ -30,11 +31,12 @@ services:
       - -url=jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?allowPublicKeyRetrieval=true&useSSL=false
       - -user=${MYSQL_USER}
       - -password=${MYSQL_PASSWORD}
-      - -locations=filesystem:/flyway/sql
+      - -locations=filesystem:/flyway/sql,filesystem:/flyway/seed
       - -connectRetries=10
       - migrate
     volumes:
       - ./migrations:/flyway/sql
+      - ./seed:/flyway/seed
 
 volumes:
   mysql-data:

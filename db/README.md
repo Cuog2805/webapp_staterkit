@@ -25,7 +25,8 @@ MySQL 8.4 chạy bằng Docker Compose, schema được quản lý bằng **Flyw
 | `docker-compose.yml` | Định nghĩa service `mysql` và `flyway` |
 | `.env` | Biến môi trường thật (không commit) — copy từ `.env.example` |
 | `.env.example` | Mẫu biến môi trường |
-| `migrations/` | Các file migration SQL do Flyway chạy |
+| `migrations/` | Các file migration SQL do Flyway chạy (dev + production) |
+| `seed/` | Dữ liệu mẫu, chỉ chạy ở dev |
 
 Các biến trong `.env`:
 
@@ -127,16 +128,16 @@ Ví dụ: thêm cột `phone` vào bảng `users`.
 
 ### Seed dữ liệu
 
-Dữ liệu khởi tạo cũng là migration SQL bình thường, ví dụ `migrations/V3__seed_roles.sql`:
+Có hai loại dữ liệu khởi tạo, đặt ở hai thư mục khác nhau:
 
-```sql
-INSERT INTO roles (code, name) VALUES
-  ('admin', 'Quản trị viên'),
-  ('user',  'Người dùng')
-ON DUPLICATE KEY UPDATE name = VALUES(name);
-```
+| Loại | Thư mục | Chạy ở | Ví dụ |
+|---|---|---|---|
+| **Dữ liệu tham chiếu** — hệ thống cần mới chạy được | `migrations/` | dev **và** production | danh mục vai trò, mã trạng thái |
+| **Dữ liệu mẫu** — chỉ để dev/demo | `seed/` | **chỉ dev** | tài khoản test `password123`, đơn mẫu |
 
-> Với dữ liệu seed hay thay đổi, cân nhắc dùng file repeatable `R__seed_roles.sql` (dùng `INSERT ... ON DUPLICATE KEY UPDATE` để chạy lại an toàn).
+`docker-compose.yml` (dev) chạy cả hai thư mục; image `migrate` của production (`db/Dockerfile`) chỉ đóng gói `migrations/`. Đừng bao giờ đặt tài khoản có mật khẩu cố định vào `migrations/` — nó sẽ lên production.
+
+Lưu ý: Flyway đánh số version **chung** cho cả hai thư mục, nên file mới ở `seed/` không được trùng số với `migrations/`. Với seed hay thay đổi, dùng file repeatable `seed/R__seed_xxx.sql` (viết `INSERT ... ON DUPLICATE KEY UPDATE` để chạy lại an toàn) thay vì chiếm số version.
 
 ### Lệnh Flyway hữu ích
 

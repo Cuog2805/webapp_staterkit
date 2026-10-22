@@ -27,7 +27,7 @@ cp .env.example .env     # lần đầu; file .env đã có sẵn giá trị dev
 docker compose up -d     # khởi động MySQL và tự áp dụng migration (Flyway)
 ```
 
-Migration SQL nằm ở `db/migrations/` (V1 users, V2 tài khoản+danh mục, V3 đơn, V4 dữ liệu mẫu).
+Migration SQL nằm ở `db/migrations/` (V1 users, V2 tài khoản+danh mục, V3 đơn); dữ liệu mẫu chỉ dùng cho dev ở `db/seed/` (V4).
 Chạy lại sạch từ đầu: `docker compose down -v && docker compose up -d`.
 
 ### 2) Backend API
@@ -90,6 +90,11 @@ Danh sách phân trang bằng `page`, `size` (size tối đa 50).
   `MOI → DA_TIEP_NHAN` (DIEU_HANH) · `MOI → HUY` (chủ đơn/DIEU_HANH, có lý do) ·
   `DA_TIEP_NHAN → DANG_TRIEN_KHAI` (DIEU_HANH, phân công ktvId) ·
   `DA_TIEP_NHAN → HUY` (DIEU_HANH, có lý do) · `DANG_TRIEN_KHAI → HOAN_TAT` (KY_THUAT được giao).
+
+## Deploy production
+
+Docker Compose trên một VM: Caddy (HTTPS) → Next.js + ASP.NET → MySQL, CI/CD bằng GitHub Actions.
+Hướng dẫn từng bước và giải thích lý do: [`docs/deploy.md`](docs/deploy.md).
 
 ## Unit test (chạy bằng 1 lệnh)
 

@@ -1,0 +1,113 @@
+# Build image → đẩy lên GitHub Container Registry → SSH vào server chạy scripts/deploy.sh.
+#
+# Kích hoạt: push tag "v*" (vd `git tag v1.0.0 && git push origin v1.0.0`) hoặc bấm tay
+# trong tab Actions. Cố ý KHÔNG tự deploy mỗi lần push main: phát hành là một quyết định.
+#
+# Cần cấu hình (Settings → Environments → "production"):
+#   secrets: SSH_HOST, SSH_USER, SSH_PRIVATE_KEY, SSH_KNOWN_HOSTS
+#   variables (tuỳ chọn): DEPLOY_PATH (mặc định /opt/webapp)
+# Bật "Required reviewers" cho environment để mỗi lần deploy phải có người duyệt.
+name: Deploy
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Không bao giờ chạy hai lần deploy chồng nhau; lần sau xếp hàng chờ, không hủy lần đang chạy.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      prefix: ${{ steps.vars.outputs.prefix }}
+      tag: ${{ steps.vars.outputs.tag }}
+    steps:
+      - id: vars
+        run: |
+          # Tên image trên GHCR bắt buộc chữ thường.
+          echo "prefix=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          # Tag bất biến theo commit: biết chính xác code nào đang chạy, rollback được.
+          echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: [ci, meta]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - { name: web, context: my-app }
+          - { name: api, context: api }
+          - { name: migrate, context: db }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: |
+            ${{ needs.meta.outputs.prefix }}/${{ matrix.name }}:${{ needs.meta.outputs.tag }}
+            ${{ startsWith(github.ref, 'refs/tags/') && format('{0}/{1}:{2}', needs.meta.outputs.prefix, matrix.name, github.ref_name) || '' }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  deploy:
+    needs: [meta, build]
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/webapp' }}
+      TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Secret truyền qua env thay vì chèn ${{ }} thẳng vào script: tránh lỗi quoting
+      # và tránh lớp lỗi "script injection" của GitHub Actions.
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          # Ghim host key thay vì StrictHostKeyChecking=no: chống bị MITM đánh tráo server.
+          # Lấy giá trị bằng: ssh-keyscan -H <server>
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf 'Host *\n  IdentityFile ~/.ssh/id_deploy\n  IdentitiesOnly yes\n' > ~/.ssh/config
+
+      # Chỉ đồng bộ file cấu hình; .env (secret) chỉ tồn tại trên server, không đi qua CI.
+      - name: Upload deploy files
+        run: |
+          # shellcheck disable=SC2029 # cố ý expand $DEPLOY_PATH ở phía runner
+          ssh "$TARGET" "mkdir -p '$DEPLOY_PATH'"
+          scp -r deploy/docker-compose.yml deploy/Caddyfile deploy/mysql-init deploy/scripts "$TARGET:$DEPLOY_PATH/"
+
+      - name: Deploy
+        env:
+          TAG: ${{ needs.meta.outputs.tag }}
+        run: |
+          # shellcheck disable=SC2029 # cố ý expand biến ở phía runner
+          ssh "$TARGET" "cd '$DEPLOY_PATH' && scripts/deploy.sh '$TAG'"
+
+      - name: Clean up SSH key
+        if: always()
+        run: rm -f ~/.ssh/id_deploy
