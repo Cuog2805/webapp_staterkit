@@ -1,0 +1,10 @@
+# Chế độ PUBLIC (server có IP public, mở cổng 80/443).
+# Caddy tự xin/gia hạn chứng chỉ TLS (Let's Encrypt) cho {$DOMAIN}.
+# Với DOMAIN=localhost, Caddy tự cấp cert nội bộ (trình duyệt sẽ cảnh báo — bình thường).
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	import app.caddy
+}

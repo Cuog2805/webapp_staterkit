@@ -106,4 +106,7 @@ docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build -
 
 - Frontend and API share one domain: Caddy routes `/api/*` to the API, so every controller route must start with `api/`. The frontend image is built with an empty `NEXT_PUBLIC_API_URL` (relative URLs).
 - API config in production comes from env vars (`ConnectionStrings__Default`, `Jwt__Key`, …). CORS origins come from `Cors:AllowedOrigins` (dev only; empty in prod). TLS ends at Caddy — don't re-add `UseHttpsRedirection`.
-- CI: `.github/workflows/ci.yml` (lint, test, image build). Release: push a `v*` tag → `.github/workflows/deploy.yml` builds, pushes to GHCR and runs `deploy/scripts/deploy.sh <tag>` on the server over SSH.
+- Caddy config lives in `deploy/caddy/`: shared routes in `app.caddy`, imported by `Caddyfile` (public mode, auto TLS) and `Caddyfile.tunnel` (behind Cloudflare Tunnel, HTTP only). Route changes go in `app.caddy`.
+- Tunnel mode (no public IP, e.g. a Windows/WSL2 test box): set `COMPOSE_FILE=docker-compose.yml:docker-compose.tunnel.yml` in `deploy/.env`; adds `cloudflared`, drops Caddy's published ports. Guide: `docs/deploy-windows-cloudflare.md`.
+- CI: `.github/workflows/ci.yml` (lint, test, image build). Release: push a `v*` tag → `.github/workflows/deploy.yml` builds and pushes to GHCR; the SSH deploy job (`deploy/scripts/deploy.sh <tag>` on the server) only runs when the repo variable `SSH_DEPLOY=true`, otherwise the run summary prints the command to run by hand.
+- `.gitattributes` forces LF for `*.sh`, Caddy and YAML files — keep it, Windows checkouts break bash scripts otherwise.

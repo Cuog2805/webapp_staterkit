@@ -1,0 +1,34 @@
+# Override: chạy sau Cloudflare Tunnel thay vì mở cổng 80/443.
+#
+# Dùng khi máy chạy stack KHÔNG có IP public hoặc không muốn mở cổng: máy ở nhà,
+# laptop Windows (Docker Desktop), VPS sau NAT… cloudflared chủ động kết nối RA
+# Cloudflare, nên không cần mở cổng hay cấu hình router.
+#
+#   Trình duyệt ──HTTPS──► Cloudflare ══tunnel══► cloudflared ──HTTP──► caddy:80 ──► web / api
+#
+# Bật bằng cách thêm dòng này vào .env (mọi lệnh `docker compose` và scripts/*.sh tự dùng):
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.tunnel.yml
+# Hướng dẫn đầy đủ: docs/deploy-windows-cloudflare.md
+services:
+  caddy:
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile.tunnel", "--adapter", "caddyfile"]
+    # Bỏ toàn bộ cổng publish của file gốc: chỉ cloudflared nói chuyện với Caddy.
+    ports: !reset []
+
+  cloudflared:
+    image: cloudflare/cloudflared:2025.11.1
+    restart: unless-stopped
+    # Tunnel tạo trên dashboard Cloudflare ("remotely-managed"): hostname nào trỏ tới
+    # service nào được cấu hình trên dashboard, ở đây chỉ cần token.
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?TUNNEL_TOKEN is required in tunnel mode}
+    depends_on:
+      caddy:
+        condition: service_started
+    networks: [edge]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

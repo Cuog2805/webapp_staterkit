@@ -1,0 +1,7 @@
+# Script shell và cấu hình Caddy phải giữ xuống dòng LF, kể cả khi clone trên Windows
+# (core.autocrlf=true đổi sang CRLF ⇒ bash báo lỗi "$'\r': command not found").
+*.sh       text eol=lf
+Caddyfile* text eol=lf
+*.caddy    text eol=lf
+*.yml      text eol=lf
+.env.example text eol=lf
