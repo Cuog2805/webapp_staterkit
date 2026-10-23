@@ -144,6 +144,20 @@ JWT_KEY=...
 
 `TUNNEL_TOKEN` viết liền một dòng, **không** có dấu ngoặc kép, không có dấu cách hai bên `=`.
 
+**`.env` nằm trong WSL, cạnh `docker-compose.yml` mà bạn chạy lệnh:** `~/webapp_staterkit/deploy/.env` (trong Linux). `docker compose` chỉ đọc file `.env` ở thư mục project của nó; một bản `.env` trong thư mục repo bên Windows (`C:\...`) không được dùng tới.
+
+Muốn sửa bằng editor của Windows thay vì `nano`:
+
+- **VS Code** (khuyên dùng): cài extension **WSL**, rồi trong terminal Ubuntu gõ `code ~/webapp_staterkit` — VS Code mở thẳng thư mục trong WSL.
+- **File Explorer**: mở `\\wsl$\Ubuntu-24.04\home\<user-linux>\webapp_staterkit\deploy`.
+
+Đừng sửa bằng Notepad cũ hay editor lưu xuống dòng kiểu Windows (CRLF): mỗi giá trị sẽ dính ký tự `\r` vô hình ở cuối — token thành "không hợp lệ", mật khẩu không khớp, mà nhìn bằng mắt không thấy sai. Kiểm tra và sửa:
+
+```bash
+grep -c $'\r' .env           # 0 là đúng
+sed -i 's/\r$//' .env        # nếu khác 0: bỏ \r
+```
+
 ### 4.2. cloudflared chạy bằng Docker như thế nào
 
 **Vì sao không chạy lệnh Cloudflare đưa ra?** Cả hai cách dashboard gợi ý đều đặt cloudflared *ngoài* mạng Docker của stack:
@@ -329,6 +343,7 @@ Rồi bật deploy tự động: thêm repository variable `SSH_DEPLOY=true` và
 | Trang lỗi Cloudflare **1033** | Tunnel chưa kết nối. `docker compose logs cloudflared`: token sai/thiếu, hoặc máy mất mạng |
 | Trang lỗi **502 Bad Gateway** | cloudflared không tới được Caddy: Public Hostname phải là `HTTP` + `caddy:80` (không phải `localhost`, không phải `HTTPS`). Hoặc caddy chưa chạy: `docker compose ps` |
 | `TUNNEL_TOKEN is required in tunnel mode` | `.env` thiếu `TUNNEL_TOKEN` hoặc còn để trống |
+| Token "not valid"/mật khẩu sai dù copy đúng | `.env` bị lưu xuống dòng CRLF bởi editor Windows: `grep -c $'\r' .env` khác 0 → `sed -i 's/\r$//' .env` (mục 4.1) |
 | `$'\r': command not found` khi chạy script | File bị đổi sang CRLF. Clone lại repo **trong WSL** (mục 2.3), hoặc `sed -i 's/\r$//' scripts/*.sh` |
 | `denied` / `unauthorized` khi pull `ghcr.io/...` | Chưa `docker login ghcr.io` (5.1), hoặc `IMAGE_PREFIX` có chữ hoa |
 | `deploy.sh` báo `not found` | Tag không tồn tại — copy đúng tag ở trang Summary của workflow |
