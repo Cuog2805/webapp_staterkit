@@ -91,7 +91,15 @@ cd webapp_staterkit/deploy
 
 1. Dashboard → **Zero Trust** → **Networks** → **Tunnels** → **Create a tunnel** → chọn **Cloudflared**.
 2. Đặt tên, vd `webapp-test`.
-3. Màn hình "Install and run a connector" hiện một lệnh dạng `cloudflared service install eyJh...`. **Không chạy lệnh đó** — chỉ copy chuỗi token dài sau `install` (bắt đầu bằng `eyJ`). Bạn sẽ chạy cloudflared bằng Docker.
+3. Màn hình **"Install and run a connector"** cho chọn môi trường (Windows, Mac, Debian, Red Hat, Docker…). Chọn tab **Docker**, sẽ thấy lệnh dạng:
+
+   ```
+   docker run cloudflare/cloudflared:latest tunnel --no-autoupdate run --token eyJhIjoiNGY...
+   ```
+
+   **Không chạy lệnh này.** Chỉ copy phần sau `--token ` — chuỗi dài bắt đầu bằng `eyJ`, không có dấu cách, thường vài trăm ký tự. Copy đủ tới ký tự cuối. Token này sẽ vào `deploy/.env`; cloudflared được chạy bởi Docker Compose cùng với cả stack — lý do và cách làm ở [mục 4.2](#42-cloudflared-chạy-bằng-docker-như-thế-nào).
+
+   Nếu wizard chưa cho bấm **Next** khi chưa có connector nào kết nối: làm [mục 4](#4-chạy-lần-đầu-build-từ-mã-nguồn) trước, quay lại đây khi tunnel báo **HEALTHY**.
 4. **Public Hostname** (hoặc "Route traffic"):
    - Subdomain: `test` · Domain: domain của bạn
    - Service Type: `HTTP` · URL: `caddy:80`
@@ -110,6 +118,8 @@ cd webapp_staterkit/deploy
 ## 4. Chạy lần đầu (build từ mã nguồn)
 
 Lần đầu, build image ngay trên máy để tách biến số: nếu hỏng thì chắc chắn là phần tunnel/cấu hình, chưa dính tới registry.
+
+### 4.1. Tạo `.env`
 
 ```bash
 cd ~/webapp_staterkit/deploy
@@ -132,17 +142,127 @@ APP_DB_PASSWORD=...
 JWT_KEY=...
 ```
 
-Chạy:
+`TUNNEL_TOKEN` viết liền một dòng, **không** có dấu ngoặc kép, không có dấu cách hai bên `=`.
+
+**`.env` nằm trong WSL, cạnh `docker-compose.yml` mà bạn chạy lệnh:** `~/webapp_staterkit/deploy/.env` (trong Linux). `docker compose` chỉ đọc file `.env` ở thư mục project của nó; một bản `.env` trong thư mục repo bên Windows (`C:\...`) không được dùng tới.
+
+Muốn sửa bằng editor của Windows thay vì `nano`:
+
+- **VS Code** (khuyên dùng): cài extension **WSL**, rồi trong terminal Ubuntu gõ `code ~/webapp_staterkit` — VS Code mở thẳng thư mục trong WSL.
+- **File Explorer**: mở `\\wsl$\Ubuntu-24.04\home\<user-linux>\webapp_staterkit\deploy`.
+
+Đừng sửa bằng Notepad cũ hay editor lưu xuống dòng kiểu Windows (CRLF): mỗi giá trị sẽ dính ký tự `\r` vô hình ở cuối — token thành "không hợp lệ", mật khẩu không khớp, mà nhìn bằng mắt không thấy sai. Kiểm tra và sửa:
 
 ```bash
-docker compose up -d --build --wait
-docker compose ps -a
-docker compose logs cloudflared | grep -i registered    # thấy "Registered tunnel connection" ×4 là tunnel đã thông
+grep -c $'\r' .env           # 0 là đúng
+sed -i 's/\r$//' .env        # nếu khác 0: bỏ \r
 ```
 
-Mở `https://test.<domain>` — có HTTPS hợp lệ, không cảnh báo cert.
+### 4.2. cloudflared chạy bằng Docker như thế nào
 
-Tự kiểm tra (và hiểu vì sao):
+**Vì sao không chạy lệnh Cloudflare đưa ra?** Cả hai cách dashboard gợi ý đều đặt cloudflared *ngoài* mạng Docker của stack:
+
+```
+❌ cloudflared service install (Windows service)      ❌ docker run ... (container lẻ)
+   cloudflared ở Windows host                           cloudflared ở mạng "bridge" mặc định
+        │ "caddy:80" là gì? → không phân giải được           │ "caddy:80" là gì? → không phân giải được
+        ▼                                                    ▼
+   phải dùng localhost:80 ⇒ phải publish cổng Caddy      không thuộc compose: không có trong
+   ra máy ⇒ mất ý nghĩa của tunnel                       `docker compose ps`, dùng tag :latest
+
+✅ Service "cloudflared" trong docker-compose.tunnel.yml
+   cloudflared ──(mạng Docker "webapp_edge")──► caddy:80      Docker DNS phân giải "caddy"
+   bật/tắt/log/restart cùng stack, version cố định 2025.11.1
+```
+
+**Token đi từ đâu tới đâu:**
+
+```
+deploy/.env              docker-compose.tunnel.yml                container cloudflared
+TUNNEL_TOKEN=eyJ...  ──► environment:                      ──►  biến môi trường TUNNEL_TOKEN
+                           TUNNEL_TOKEN: ${TUNNEL_TOKEN}         cloudflared tự đọc (tương đương --token)
+```
+
+Vì vậy service chỉ cần lệnh `tunnel --no-autoupdate run` — không có `--token` trên dòng lệnh, nên token không hiện trong `docker ps` hay `docker inspect` phần command. (`--no-autoupdate`: trong container, nâng version bằng cách đổi tag image, không để cloudflared tự tải bản mới.)
+
+Toàn bộ service (đọc trong `deploy/docker-compose.tunnel.yml`):
+
+```yaml
+cloudflared:
+  image: cloudflare/cloudflared:2025.11.1
+  restart: unless-stopped
+  command: ["tunnel", "--no-autoupdate", "run"]
+  environment:
+    TUNNEL_TOKEN: ${TUNNEL_TOKEN:?TUNNEL_TOKEN is required in tunnel mode}
+  networks: [edge]          # cùng mạng với caddy
+```
+
+Tên `caddy` trong URL `caddy:80` ở dashboard chính là **tên service** trong compose. Docker có DNS nội bộ cho mỗi mạng: container nào cùng mạng `edge` hỏi "caddy" sẽ nhận IP của container Caddy. Đổi tên service thì phải đổi URL trên dashboard theo.
+
+### 4.3. Khởi động từng bước, kiểm tra từng lớp
+
+Chạy cả stack một lệnh cũng được (`docker compose up -d --build --wait`), nhưng **lần đầu nên lên từng lớp**: lớp nào hỏng thì biết ngay, không phải đoán.
+
+**Bước 1 — app (chưa có tunnel):**
+
+```bash
+cd ~/webapp_staterkit/deploy
+docker compose config --quiet && echo "cấu hình OK"      # bắt lỗi .env trước khi chạy gì
+docker compose up -d --build --wait caddy                # kéo theo mysql, migrate, api, web
+docker compose ps -a                                     # migrate: Exited (0), còn lại Up/healthy
+```
+
+Lần đầu build mất vài phút. Không dùng `docker compose config` không có `--quiet` — nó in toàn bộ cấu hình, **kể cả token và mật khẩu**, ra màn hình.
+
+**Bước 2 — kiểm tra Caddy từ trong mạng Docker,** đúng vị trí cloudflared sẽ đứng:
+
+```bash
+docker run --rm --network webapp_edge curlimages/curl:8.11.1 -sI http://caddy:80
+```
+
+Thấy `HTTP/1.1 200 OK` ⇒ phần của bạn đã xong (không in gì ⇒ Caddy vừa khởi động, đợi vài giây chạy lại); nếu lát nữa site lỗi thì lỗi nằm ở tunnel/dashboard. (`webapp_edge` = tên project `webapp` + tên mạng `edge`; kiểm tra bằng `docker network ls`. Image cloudflared không có shell nên không `exec` vào nó để curl được — mới phải mượn container curl.)
+
+**Bước 3 — bật tunnel:**
+
+```bash
+docker compose up -d cloudflared
+docker compose logs -f cloudflared          # Ctrl+C để thoát
+```
+
+Log tốt trông như sau (4 kết nối tới các data center gần nhất, ở Việt Nam thường là `sin`/`hkg`):
+
+```
+INF Starting tunnel tunnelID=...
+INF Registered tunnel connection connIndex=0 connection=... location=sin02 protocol=quic
+INF Registered tunnel connection connIndex=1 ... location=hkg01 protocol=quic
+INF Registered tunnel connection connIndex=2 ...
+INF Registered tunnel connection connIndex=3 ...
+```
+
+Trên dashboard (Networks → Tunnels), tunnel chuyển trạng thái **HEALTHY**, mục Connectors hiện tên máy bạn.
+
+**Bước 4 — từ ngoài vào:** mở `https://test.<domain>`. Có HTTPS hợp lệ, không cảnh báo cert.
+
+Những gì có thể gặp ở bước 3–4:
+
+| Log / hiện tượng | Nghĩa là | Xử lý |
+|---|---|---|
+| `TUNNEL_TOKEN is required in tunnel mode` (ở **mọi** lệnh `docker compose`, kể cả bước 1) | `.env` thiếu token — compose kiểm tra biến của mọi service trước khi làm gì | Điền `TUNNEL_TOKEN=` |
+| `Provided Tunnel token is not valid` | Token copy thiếu/thừa ký tự, có ngoặc kép hoặc dấu cách | Copy lại từ dashboard (tunnel → Configure → token) |
+| Lặp lại `failed to dial to edge with quic` rồi mới `Registered` với `protocol=http2` | Mạng chặn UDP cổng 7844 (hay gặp ở mạng công ty); cloudflared đã **tự** chuyển sang HTTP/2 | Không cần làm gì. Muốn bỏ thời gian thử QUIC: thêm `TUNNEL_TRANSPORT_PROTOCOL: http2` vào `environment` của service cloudflared |
+| Không có dòng `Registered` nào, toàn lỗi kết nối | Máy không ra được Cloudflare (proxy công ty, firewall) | Thử mạng khác (4G phát từ điện thoại) để khoanh vùng |
+| Site báo **502**, log cloudflared có `dial tcp: lookup caddy` | cloudflared không cùng mạng với Caddy (chạy bằng lệnh của dashboard thay vì compose?) | `docker ps` xem có container cloudflared lạ nào → xoá nó; chỉ dùng service trong compose |
+| Site báo **502**, log có `connection refused` | Caddy chưa chạy | `docker compose ps`, quay lại bước 1–2 |
+| Site báo **1033** | Không có connector nào đang kết nối | `docker compose ps cloudflared`; xem log |
+
+**Hai điều nên biết về token:**
+
+- **Cùng một token chạy ở hai nơi = hai "replica"** của cùng tunnel, Cloudflare chia traffic cho cả hai. Đây là tính năng (chạy dự phòng), nhưng nếu vô tình để cloudflared chạy cả trên laptop lẫn máy khác thì một nửa request sẽ đi sang máy kia. Dashboard → tunnel → Connectors liệt kê mọi nơi đang dùng token.
+- **Đổi token** (nghi bị lộ): dashboard → tunnel → refresh/rotate token → sửa `TUNNEL_TOKEN` trong `.env` → `docker compose up -d cloudflared` (compose thấy env đổi sẽ tạo lại container).
+
+### 4.4. Tự kiểm tra
+
+Các kiểm tra sau xác nhận stack hoạt động đúng thiết kế (và nên hiểu vì sao mỗi kết quả là đúng):
 
 ```bash
 curl -sI http://test.<domain>              # 301 → https (Cloudflare "Always Use HTTPS")
@@ -223,6 +343,7 @@ Rồi bật deploy tự động: thêm repository variable `SSH_DEPLOY=true` và
 | Trang lỗi Cloudflare **1033** | Tunnel chưa kết nối. `docker compose logs cloudflared`: token sai/thiếu, hoặc máy mất mạng |
 | Trang lỗi **502 Bad Gateway** | cloudflared không tới được Caddy: Public Hostname phải là `HTTP` + `caddy:80` (không phải `localhost`, không phải `HTTPS`). Hoặc caddy chưa chạy: `docker compose ps` |
 | `TUNNEL_TOKEN is required in tunnel mode` | `.env` thiếu `TUNNEL_TOKEN` hoặc còn để trống |
+| Token "not valid"/mật khẩu sai dù copy đúng | `.env` bị lưu xuống dòng CRLF bởi editor Windows: `grep -c $'\r' .env` khác 0 → `sed -i 's/\r$//' .env` (mục 4.1) |
 | `$'\r': command not found` khi chạy script | File bị đổi sang CRLF. Clone lại repo **trong WSL** (mục 2.3), hoặc `sed -i 's/\r$//' scripts/*.sh` |
 | `denied` / `unauthorized` khi pull `ghcr.io/...` | Chưa `docker login ghcr.io` (5.1), hoặc `IMAGE_PREFIX` có chữ hoa |
 | `deploy.sh` báo `not found` | Tag không tồn tại — copy đúng tag ở trang Summary của workflow |
