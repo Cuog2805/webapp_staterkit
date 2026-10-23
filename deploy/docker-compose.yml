@@ -1,4 +1,4 @@
-# Stack production. File này (cùng Caddyfile, mysql-init/, scripts/) được copy lên server;
+# Stack production. File này (cùng caddy/, mysql-init/, scripts/) được copy lên server;
 # server KHÔNG cần mã nguồn — nó chỉ kéo image đã build sẵn từ registry.
 # Biến ${...} đọc từ file .env cạnh file này (mẫu: .env.example).
 #
@@ -26,7 +26,8 @@ services:
       DOMAIN: ${DOMAIN:?DOMAIN is required}
       ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is required}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Caddyfile (chế độ public) + Caddyfile.tunnel + app.caddy (route dùng chung).
+      - ./caddy:/etc/caddy:ro
       - caddy-data:/data # chứng chỉ TLS — mất volume này là phải xin lại cert (có rate limit)
       - caddy-config:/config
     depends_on:

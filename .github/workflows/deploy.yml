@@ -1,9 +1,13 @@
-# Build image → đẩy lên GitHub Container Registry → SSH vào server chạy scripts/deploy.sh.
+# Build image → đẩy lên GitHub Container Registry → (tuỳ chọn) SSH vào server chạy scripts/deploy.sh.
 #
 # Kích hoạt: push tag "v*" (vd `git tag v1.0.0 && git push origin v1.0.0`) hoặc bấm tay
 # trong tab Actions. Cố ý KHÔNG tự deploy mỗi lần push main: phát hành là một quyết định.
 #
-# Cần cấu hình (Settings → Environments → "production"):
+# Bước SSH deploy chỉ chạy khi có repository variable SSH_DEPLOY=true. Khi chưa có server
+# SSH được (vd đang chạy thử trên máy Windows sau Cloudflare Tunnel), workflow chỉ build +
+# push image và in ra lệnh deploy để bạn tự chạy trên máy đó.
+#
+# Khi bật SSH deploy, cấu hình (Settings → Environments → "production"):
 #   secrets: SSH_HOST, SSH_USER, SSH_PRIVATE_KEY, SSH_KNOWN_HOSTS
 #   variables (tuỳ chọn): DEPLOY_PATH (mặc định /opt/webapp)
 # Bật "Required reviewers" cho environment để mỗi lần deploy phải có người duyệt.
@@ -69,8 +73,32 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
+  summary:
+    needs: [meta, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write release summary
+        env:
+          PREFIX: ${{ needs.meta.outputs.prefix }}
+          TAG: ${{ needs.meta.outputs.tag }}
+        run: |
+          {
+            echo "### Image đã push"
+            echo
+            echo "| Service | Image |"
+            echo "|---|---|"
+            for s in web api migrate; do echo "| $s | \`$PREFIX/$s:$TAG\` |"; done
+            echo
+            echo "Deploy tay trên máy chạy stack (trong thư mục deploy):"
+            echo
+            echo '```bash'
+            echo "scripts/deploy.sh $TAG"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   deploy:
     needs: [meta, build]
+    if: vars.SSH_DEPLOY == 'true'
     runs-on: ubuntu-latest
     environment: production
     env:
@@ -99,7 +127,7 @@ jobs:
         run: |
           # shellcheck disable=SC2029 # cố ý expand $DEPLOY_PATH ở phía runner
           ssh "$TARGET" "mkdir -p '$DEPLOY_PATH'"
-          scp -r deploy/docker-compose.yml deploy/Caddyfile deploy/mysql-init deploy/scripts "$TARGET:$DEPLOY_PATH/"
+          scp -r deploy/docker-compose.yml deploy/docker-compose.tunnel.yml deploy/caddy deploy/mysql-init deploy/scripts "$TARGET:$DEPLOY_PATH/"
 
       - name: Deploy
         env:

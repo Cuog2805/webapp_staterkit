@@ -2,6 +2,8 @@
 
 Tài liệu này vừa là **hướng dẫn thao tác** vừa giải thích **vì sao** làm như vậy. Mục tiêu là sau khi đọc xong, bạn có thể tự dựng lại cách deploy này cho dự án khác.
 
+> **Chưa có VPS?** Chạy thử trên máy Windows, ra Internet bằng domain thật qua Cloudflare Tunnel: [`deploy-windows-cloudflare.md`](deploy-windows-cloudflare.md).
+
 ## Mục lục
 
 1. [Kiến trúc](#1-kiến-trúc)
@@ -58,7 +60,8 @@ Nếu migration lỗi, API **không khởi động** — tốt hơn nhiều so v
 | `db/Dockerfile` | Image `migrate` = Flyway + `db/migrations/` (không có `db/seed/`) |
 | `deploy/docker-compose.yml` | Stack production — file duy nhất cần trên server (cùng các file dưới) |
 | `deploy/docker-compose.local.yml` | Override thêm `build:` để chạy thử stack prod từ mã nguồn |
-| `deploy/Caddyfile` | Reverse proxy + TLS |
+| `deploy/caddy/` | Reverse proxy: `app.caddy` (route dùng chung), `Caddyfile` (chế độ public, tự xin TLS), `Caddyfile.tunnel` (sau Cloudflare Tunnel) |
+| `deploy/docker-compose.tunnel.yml` | Override chạy sau Cloudflare Tunnel — không mở cổng nào |
 | `deploy/.env.example` | Mẫu biến môi trường/secret. Bản thật `.env` chỉ nằm trên server |
 | `deploy/mysql-init/01-app-user.sh` | Tạo user DB quyền tối thiểu cho API (chạy 1 lần khi volume trống) |
 | `deploy/scripts/deploy.sh` | Deploy / rollback theo tag image |
@@ -149,7 +152,7 @@ Tạo bản ghi `A` cho domain (vd `app.example.com`) trỏ về IP server. Ph�
 
 ```bash
 sudo mkdir -p /opt/webapp && sudo chown deploy:deploy /opt/webapp
-# Copy (lần đầu, bằng tay; về sau CI tự đồng bộ): docker-compose.yml, Caddyfile, mysql-init/, scripts/, .env.example
+# Copy (lần đầu, bằng tay; về sau CI tự đồng bộ): docker-compose*.yml, caddy/, mysql-init/, scripts/, .env.example
 cd /opt/webapp
 cp .env.example .env && chmod 600 .env
 nano .env
@@ -308,7 +311,7 @@ Bộ khung này không phụ thuộc vào nghiệp vụ. Khi copy sang dự án 
 - [ ] API khác ASP.NET: giữ nguyên ý tưởng — app nghe HTTP nội bộ, có `/health`, đọc config từ biến môi trường, tin `X-Forwarded-*`.
 - [ ] DB khác MySQL: thay service `mysql`, healthcheck, script `mysql-init/`, lệnh dump trong `backup.sh`.
 - [ ] Không dùng Flyway: thay image `migrate` bằng công cụ migration của bạn — giữ nguyên nguyên tắc "migrate chạy xong rồi API mới lên".
-- [ ] Đổi `Jwt__*`, các route trong `Caddyfile` theo app mới.
+- [ ] Đổi `Jwt__*`, các route trong `deploy/caddy/app.caddy` theo app mới.
 - [ ] Chạy lại toàn bộ [mục 3](#3-tập-chạy-trên-máy-mình-trước) trước khi lên server.
 
 ## 12. Xử lý sự cố
